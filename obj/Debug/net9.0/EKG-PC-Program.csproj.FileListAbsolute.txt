@@ -1,0 +1,14 @@
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/bin/Debug/net9.0/EKG-PC-Program
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/bin/Debug/net9.0/EKG-PC-Program.deps.json
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/bin/Debug/net9.0/EKG-PC-Program.runtimeconfig.json
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/bin/Debug/net9.0/EKG-PC-Program.dll
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/bin/Debug/net9.0/EKG-PC-Program.pdb
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.GeneratedMSBuildEditorConfig.editorconfig
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.AssemblyInfoInputs.cache
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.AssemblyInfo.cs
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.csproj.CoreCompileInputs.cache
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.dll
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/refint/EKG-PC-Program.dll
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.pdb
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.genruntimeconfig.cache
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/ref/EKG-PC-Program.dll
