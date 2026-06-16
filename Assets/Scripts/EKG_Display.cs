@@ -7,6 +7,14 @@ public class EKGDisplay : MonoBehaviour
 
     void Update()
     {
-        ekgText.text = "EKG: " + ArduinoReader.currentEKG;
+        if (ekgText == null)
+        {
+            return;
+        }
+
+        ekgText.text =
+            "EKG: " + ArduinoReader.currentEKG +
+            "\nSamples: " + ArduinoReader.SamplesReceived +
+            "\nStatus: " + ArduinoReader.LastStatus;
     }
 }

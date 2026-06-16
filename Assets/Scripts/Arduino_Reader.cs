@@ -1,64 +1,134 @@
 using System;
+using System.Globalization;
 using System.IO.Ports;
 using UnityEngine;
 
 public class ArduinoReader : MonoBehaviour
 {
     public static int currentEKG = 0;
+    public static float currentEKGFloat = 0f;
+    public static bool IsConnected { get; private set; }
+    public static string LastStatus { get; private set; } = "Ikke forbundet";
+    public static long SamplesReceived { get; private set; }
+
+    [Header("Arduino")]
+    public string portName = "COM5";
+    public int baudRate = 19200;
+    public int readTimeoutMs = 20;
+    public int maxLinesPerFrame = 8;
+
+    [Header("Data format")]
+    public string separator = ",";
+    public int ekgColumn = 1;
 
     private SerialPort serial;
 
     void Start()
     {
-        serial = new SerialPort("COM5", 19200);
-        serial.ReadTimeout = 50;
-
-        try
-        {
-            serial.Open();
-
-            serial.DiscardInBuffer();
-            serial.DiscardOutBuffer();
-
-            Debug.Log("COM5 åbnet");
-        }
-        catch (Exception e)
-        {
-            Debug.LogError(e.Message);
-        }
+        OpenPort();
     }
 
     void Update()
     {
         if (serial == null || !serial.IsOpen)
-            return;
-
-        try
         {
-            string data = serial.ReadLine();
+            IsConnected = false;
+            return;
+        }
 
-            string[] values = data.Split(',');
-
-            if (values.Length >= 2)
+        for (int i = 0; i < maxLinesPerFrame; i++)
+        {
+            try
             {
-                currentEKG = int.Parse(values[1]);
-                Debug.Log(currentEKG);
-                if (Time.frameCount % 60 == 0)
+                string line = serial.ReadLine();
+
+                if (TryParseEkg(line, out float value))
                 {
-                    Debug.Log("EKG = " + currentEKG);
+                    currentEKGFloat = value;
+                    currentEKG = Mathf.RoundToInt(value);
+                    SamplesReceived++;
+                    LastStatus = "Forbundet: " + portName;
                 }
             }
-        }
-        catch
-        {
+            catch (TimeoutException)
+            {
+                break;
+            }
+            catch (Exception e)
+            {
+                LastStatus = "Serial fejl: " + e.Message;
+                Debug.LogWarning(LastStatus);
+                break;
+            }
         }
     }
 
+    private void OpenPort()
+    {
+        try
+        {
+            serial = new SerialPort(portName, baudRate);
+            serial.ReadTimeout = readTimeoutMs;
+            serial.NewLine = "\n";
+            serial.Open();
+            serial.DiscardInBuffer();
+            serial.DiscardOutBuffer();
+
+            IsConnected = true;
+            LastStatus = "Forbundet: " + portName;
+            Debug.Log(LastStatus);
+        }
+        catch (Exception e)
+        {
+            IsConnected = false;
+            LastStatus = "Kunne ikke aabne " + portName + ": " + e.Message;
+            Debug.LogError(LastStatus);
+        }
+    }
+
+    private bool TryParseEkg(string line, out float value)
+    {
+        value = 0f;
+
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return false;
+        }
+
+        char splitChar = string.IsNullOrEmpty(separator) ? ',' : separator[0];
+        string[] values = line.Trim().Split(splitChar);
+        int column = Mathf.Clamp(ekgColumn, 0, values.Length - 1);
+
+        if (values.Length == 1)
+        {
+            column = 0;
+        }
+
+        return float.TryParse(
+            values[column],
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out value
+        );
+    }
+
+    void OnDisable()
+    {
+        ClosePort();
+    }
+
     void OnApplicationQuit()
+    {
+        ClosePort();
+    }
+
+    private void ClosePort()
     {
         if (serial != null && serial.IsOpen)
         {
             serial.Close();
         }
+
+        IsConnected = false;
     }
 }
