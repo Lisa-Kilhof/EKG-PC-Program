@@ -4,16 +4,24 @@ using UnityEngine;
 [RequireComponent(typeof(LineRenderer))]
 public class EKGGraph : MonoBehaviour
 {
-    public int maxPoints = 500;
-    public float graphWidth = 12f;
-    public float verticalScale = 0.01f;
-    public float smoothing = 0.15f;
+    public bool showWorldLine = false;
+    public int maxPoints = 900;
+    public float graphWidth = 14f;
+    public float graphHeight = 2.8f;
+    public float baselineFollow = 0.012f;
+    public float signalSmoothing = 0.35f;
+    public float qrsBoost = 1.4f;
     public bool autoCenter = true;
     public Color lineColor = new Color(0.2f, 1f, 0.35f);
+    public float minVisibleRange = 22f;
+    public float adaptiveScaleSpeed = 0.05f;
 
     private readonly List<float> values = new List<float>();
     private LineRenderer line;
-    private float smoothValue;
+    private float baseline;
+    private float filteredValue;
+    private float previousHighPassed;
+    private float displayRange = 100f;
     private long lastSampleCount = -1;
 
     void Awake()
@@ -25,25 +33,33 @@ public class EKGGraph : MonoBehaviour
         }
 
         line.useWorldSpace = false;
+        line.enabled = showWorldLine;
         line.positionCount = 0;
-        line.startWidth = 0.035f;
-        line.endWidth = 0.035f;
+        line.startWidth = 0.025f;
+        line.endWidth = 0.025f;
         line.numCapVertices = 2;
         line.numCornerVertices = 2;
         line.material = new Material(Shader.Find("Sprites/Default"));
         line.startColor = lineColor;
         line.endColor = lineColor;
+
+        transform.localPosition = new Vector3(0f, 1.55f, 0f);
     }
 
     void Start()
     {
-        smoothValue = ArduinoReader.currentEKGFloat;
-        SeedBaseline();
-        DrawGraph();
+        baseline = ArduinoReader.currentEKGFloat;
     }
 
     void Update()
     {
+        line.enabled = showWorldLine;
+
+        if (!showWorldLine)
+        {
+            return;
+        }
+
         if (ArduinoReader.SamplesReceived == lastSampleCount)
         {
             return;
@@ -56,22 +72,22 @@ public class EKGGraph : MonoBehaviour
 
     private void AddValue(float raw)
     {
-        smoothValue = values.Count == 0 ? raw : Mathf.Lerp(smoothValue, raw, smoothing);
-        values.Add(smoothValue);
+        baseline = values.Count == 0 ? raw : Mathf.Lerp(baseline, raw, baselineFollow);
+
+        float highPassed = raw - baseline;
+        float fastChange = highPassed - previousHighPassed;
+        previousHighPassed = highPassed;
+
+        float shapedValue = highPassed + fastChange * qrsBoost;
+        filteredValue = values.Count == 0
+            ? shapedValue
+            : Mathf.Lerp(filteredValue, shapedValue, signalSmoothing);
+
+        values.Add(filteredValue);
 
         while (values.Count > maxPoints)
         {
             values.RemoveAt(0);
-        }
-    }
-
-    private void SeedBaseline()
-    {
-        values.Clear();
-
-        for (int i = 0; i < maxPoints; i++)
-        {
-            values.Add(smoothValue);
         }
     }
 
@@ -84,6 +100,9 @@ public class EKGGraph : MonoBehaviour
         }
 
         float center = autoCenter ? Average(values) : 0f;
+        float targetRange = Mathf.Max(MaxAbsDistance(values, center), minVisibleRange);
+        displayRange = Mathf.Lerp(displayRange, targetRange, adaptiveScaleSpeed);
+
         float xStep = values.Count > 1 ? graphWidth / (values.Count - 1) : 0f;
 
         line.positionCount = values.Count;
@@ -91,7 +110,8 @@ public class EKGGraph : MonoBehaviour
         for (int i = 0; i < values.Count; i++)
         {
             float x = (i * xStep) - (graphWidth * 0.5f);
-            float y = (values[i] - center) * verticalScale;
+            float normalized = (values[i] - center) / displayRange;
+            float y = Mathf.Clamp(normalized, -1f, 1f) * graphHeight * 0.5f;
             line.SetPosition(i, new Vector3(x, y, 0f));
         }
     }
@@ -106,5 +126,21 @@ public class EKGGraph : MonoBehaviour
         }
 
         return sum / source.Count;
+    }
+
+    private float MaxAbsDistance(List<float> source, float center)
+    {
+        float maxDistance = 0f;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            float distance = Mathf.Abs(source[i] - center);
+            if (distance > maxDistance)
+            {
+                maxDistance = distance;
+            }
+        }
+
+        return maxDistance;
     }
 }

@@ -8,11 +8,12 @@ public class ArduinoReader : MonoBehaviour
     public static int currentEKG = 0;
     public static float currentEKGFloat = 0f;
     public static bool IsConnected { get; private set; }
+    public static bool IsMeasuring { get; private set; } = true;
     public static string LastStatus { get; private set; } = "Ikke forbundet";
     public static long SamplesReceived { get; private set; }
 
     [Header("Arduino")]
-    public string portName = "COM5";
+    public string portName = "/dev/cu.usbmodem11301";
     public int baudRate = 19200;
     public int readTimeoutMs = 20;
     public int maxLinesPerFrame = 8;
@@ -46,7 +47,10 @@ public class ArduinoReader : MonoBehaviour
                 {
                     currentEKGFloat = value;
                     currentEKG = Mathf.RoundToInt(value);
-                    SamplesReceived++;
+                    if (IsMeasuring)
+                    {
+                        SamplesReceived++;
+                    }
                     LastStatus = "Forbundet: " + portName;
                 }
             }
@@ -130,5 +134,15 @@ public class ArduinoReader : MonoBehaviour
         }
 
         IsConnected = false;
+    }
+
+    public static void StartMeasuring()
+    {
+        IsMeasuring = true;
+    }
+
+    public static void StopMeasuring()
+    {
+        IsMeasuring = false;
     }
 }

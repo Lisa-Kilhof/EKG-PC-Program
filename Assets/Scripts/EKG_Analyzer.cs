@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class EKGAnalyzer : MonoBehaviour
 {
+    public static int LatestBpm { get; private set; }
+
     public int beatThreshold = 520;
     public float minSecondsBetweenBeats = 0.3f;
 
@@ -23,6 +25,7 @@ public class EKGAnalyzer : MonoBehaviour
             if (secondsSinceLastBeat >= minSecondsBetweenBeats && lastBeatTime > 0f)
             {
                 CurrentBpm = Mathf.RoundToInt(60f / secondsSinceLastBeat);
+                LatestBpm = CurrentBpm;
                 Debug.Log("Puls: " + CurrentBpm + " BPM");
             }
 
