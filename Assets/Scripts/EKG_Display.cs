@@ -32,6 +32,8 @@ public class EKGDisplay : MonoBehaviour
     private GUIStyle darkPanelStyle;
     private GUIStyle buttonStyle;
     private GUIStyle activeButtonStyle;
+    private GUIStyle dangerButtonStyle;
+    private GUIStyle statusBadgeStyle;
     private GUIStyle textFieldStyle;
     private Texture2D panelTexture;
     private Texture2D darkPanelTexture;
@@ -96,7 +98,7 @@ public class EKGDisplay : MonoBehaviour
         Rect header = new Rect(app.x, app.y, app.width, 56f * scale);
         GUI.DrawTexture(header, headerTexture);
         GUI.Label(new Rect(header.x + 22f * scale, header.y, 320f * scale, header.height), "EKG MONITOR", monitorTitleStyle);
-        GUI.Label(new Rect(header.xMax - 260f * scale, header.y, 230f * scale, header.height), "LIVE USB  |  DEMO", smallLabelStyle);
+        GUI.Label(new Rect(header.xMax - 260f * scale, header.y, 230f * scale, header.height), "LIVE USB  |  EDUCATION", smallLabelStyle);
 
         float leftPanelWidth = 230f * scale;
         float rightPanelWidth = 330f * scale;
@@ -110,6 +112,7 @@ public class EKGDisplay : MonoBehaviour
 
         Rect pulseRect = new Rect(graphPanel.x + 18f * scale, graphPanel.y + 12f * scale, graphPanel.width - 36f * scale, 44f * scale);
         GUI.Label(pulseRect, "HR  " + EKGAnalyzer.LatestBpm + " BPM", titleStyle);
+        GUI.Label(new Rect(pulseRect.xMax - 154f * scale, pulseRect.y + 4f * scale, 140f * scale, 28f * scale), ArduinoReader.IsMeasuring ? "RECORDING" : "STOPPED", statusBadgeStyle);
 
         Rect graphFrame = new Rect(graphPanel.x + 18f * scale, graphPanel.y + 70f * scale, graphPanel.width - 36f * scale, graphPanel.height - 94f * scale);
         DrawGrid(graphFrame, scale);
@@ -130,7 +133,7 @@ public class EKGDisplay : MonoBehaviour
             saveStatus = "Måler";
         }
 
-        if (GUI.Button(new Rect(buttonX, buttonY + (buttonH + gap), buttonW, buttonH), "Stop måling", !ArduinoReader.IsMeasuring ? activeButtonStyle : buttonStyle))
+        if (GUI.Button(new Rect(buttonX, buttonY + (buttonH + gap), buttonW, buttonH), "Stop måling", !ArduinoReader.IsMeasuring ? dangerButtonStyle : buttonStyle))
         {
             ArduinoReader.StopMeasuring();
             saveStatus = "Klar til gem";
@@ -205,12 +208,13 @@ public class EKGDisplay : MonoBehaviour
         string status =
             "Patient: " + selectedPatient + "\n" +
             "Navn: " + patientName + "\n" +
-            "Måling: " + (ArduinoReader.IsMeasuring ? "Aktiv" : "Pause") + "\n" +
+            "Måling: " + ArduinoReader.MeasurementStatus + "\n" +
             "Signal: " + ArduinoReader.currentEKG + "\n" +
             "Puls: " + EKGAnalyzer.LatestBpm + " BPM\n" +
             "Datakvalitet: " + DataQuality() + "\n" +
             "Forbindelse: " + (ArduinoReader.IsConnected ? "Tilsluttet" : "Ikke tilsluttet") + "\n" +
-            "Gemmestatus: " + saveStatus;
+            "Gemmestatus: " + saveStatus + "\n" +
+            "Måle-samples: " + ArduinoReader.MeasurementSamples;
 
         GUI.Label(
             new Rect(statusRect.x + 22f * scale, statusRect.y + 58f * scale, statusRect.width - 44f * scale, statusRect.height - 74f * scale),
@@ -258,7 +262,7 @@ public class EKGDisplay : MonoBehaviour
             GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 12f * scale, rect.width - 20f * scale, 24f * scale), "Resultat", smallLabelStyle);
             GUI.Label(
                 new Rect(rect.x + 10f * scale, rect.y + 46f * scale, rect.width - 20f * scale, rect.height - 56f * scale),
-                "Puls: " + EKGAnalyzer.LatestBpm + "\nSamples: " + ArduinoReader.SamplesReceived + "\nStatus: " + DataQuality(),
+                "Puls: " + EKGAnalyzer.LatestBpm + "\nLive samples: " + ArduinoReader.SamplesReceived + "\nMåle-samples: " + ArduinoReader.MeasurementSamples + "\nStatus: " + DataQuality(),
                 smallLabelStyle
             );
         }
@@ -314,9 +318,9 @@ public class EKGDisplay : MonoBehaviour
             return;
         }
 
-        panelTexture = MakeTexture(new Color(0.075f, 0.085f, 0.095f, 0.96f));
-        darkPanelTexture = MakeTexture(new Color(0.035f, 0.04f, 0.047f, 0.98f));
-        headerTexture = MakeTexture(new Color(0.08f, 0.1f, 0.12f, 1f));
+        panelTexture = MakeTexture(new Color(0.055f, 0.065f, 0.078f, 0.98f));
+        darkPanelTexture = MakeTexture(new Color(0.018f, 0.022f, 0.028f, 0.99f));
+        headerTexture = MakeTexture(new Color(0.2f, 0.035f, 0.045f, 1f));
         lineTexture = MakeTexture(Color.white);
 
         panelStyle = new GUIStyle(GUI.skin.box);
@@ -331,17 +335,17 @@ public class EKGDisplay : MonoBehaviour
         monitorTitleStyle.alignment = TextAnchor.MiddleLeft;
         monitorTitleStyle.fontSize = 24;
         monitorTitleStyle.fontStyle = FontStyle.Bold;
-        monitorTitleStyle.normal.textColor = new Color(0.78f, 0.96f, 0.86f);
+        monitorTitleStyle.normal.textColor = new Color(1f, 0.92f, 0.9f);
 
         titleStyle = new GUIStyle(GUI.skin.label);
         titleStyle.alignment = TextAnchor.MiddleLeft;
         titleStyle.fontSize = 22;
         titleStyle.fontStyle = FontStyle.Bold;
-        titleStyle.normal.textColor = new Color(0.2f, 1f, 0.42f);
+        titleStyle.normal.textColor = new Color(0.35f, 1f, 0.5f);
 
         labelStyle = new GUIStyle(GUI.skin.label);
         labelStyle.fontSize = 15;
-        labelStyle.normal.textColor = new Color(0.84f, 0.9f, 0.88f);
+        labelStyle.normal.textColor = new Color(0.88f, 0.91f, 0.92f);
         labelStyle.wordWrap = true;
 
         smallLabelStyle = new GUIStyle(labelStyle);
@@ -350,12 +354,22 @@ public class EKGDisplay : MonoBehaviour
 
         buttonStyle = new GUIStyle(GUI.skin.button);
         buttonStyle.fontSize = 16;
-        buttonStyle.normal.textColor = new Color(0.84f, 0.9f, 0.88f);
-        buttonStyle.hover.textColor = new Color(0.2f, 1f, 0.42f);
+        buttonStyle.normal.textColor = new Color(0.9f, 0.92f, 0.93f);
+        buttonStyle.hover.textColor = new Color(1f, 0.62f, 0.62f);
 
         activeButtonStyle = new GUIStyle(buttonStyle);
-        activeButtonStyle.normal.textColor = new Color(0.2f, 1f, 0.42f);
+        activeButtonStyle.normal.textColor = new Color(0.35f, 1f, 0.5f);
         activeButtonStyle.fontStyle = FontStyle.Bold;
+
+        dangerButtonStyle = new GUIStyle(buttonStyle);
+        dangerButtonStyle.normal.textColor = new Color(1f, 0.34f, 0.34f);
+        dangerButtonStyle.fontStyle = FontStyle.Bold;
+
+        statusBadgeStyle = new GUIStyle(GUI.skin.box);
+        statusBadgeStyle.alignment = TextAnchor.MiddleCenter;
+        statusBadgeStyle.fontSize = 12;
+        statusBadgeStyle.fontStyle = FontStyle.Bold;
+        statusBadgeStyle.normal.textColor = new Color(1f, 0.82f, 0.82f);
 
         textFieldStyle = new GUIStyle(GUI.skin.textField);
         textFieldStyle.fontSize = 13;
@@ -431,7 +445,7 @@ public class EKGDisplay : MonoBehaviour
     private void DrawBackground()
     {
         Color oldColor = GUI.color;
-        GUI.color = new Color(0.015f, 0.018f, 0.022f, 1f);
+        GUI.color = new Color(0.008f, 0.01f, 0.014f, 1f);
         GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = oldColor;
     }
@@ -439,7 +453,7 @@ public class EKGDisplay : MonoBehaviour
     private void DrawGrid(Rect rect, float scale)
     {
         Color oldColor = GUI.color;
-        GUI.color = new Color(0.08f, 0.24f, 0.14f, 0.48f);
+        GUI.color = new Color(0.08f, 0.2f, 0.13f, 0.34f);
 
         float smallWidth = rect.width * (SecondsPerSmallSquare / GraphWindowSeconds);
         float largeWidth = rect.width * (SecondsPerLargeSquare / GraphWindowSeconds);
@@ -455,7 +469,7 @@ public class EKGDisplay : MonoBehaviour
             GUI.DrawTexture(new Rect(rect.x, y, rect.width, 1f), Texture2D.whiteTexture);
         }
 
-        GUI.color = new Color(0.14f, 0.38f, 0.2f, 0.62f);
+        GUI.color = new Color(0.18f, 0.42f, 0.25f, 0.48f);
         for (float x = rect.x; x <= rect.xMax; x += largeWidth)
         {
             GUI.DrawTexture(new Rect(x, rect.y, 2f, rect.height), Texture2D.whiteTexture);

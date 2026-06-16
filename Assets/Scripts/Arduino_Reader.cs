@@ -10,7 +10,9 @@ public class ArduinoReader : MonoBehaviour
     public static bool IsConnected { get; private set; }
     public static bool IsMeasuring { get; private set; } = true;
     public static string LastStatus { get; private set; } = "Ikke forbundet";
+    public static string MeasurementStatus { get; private set; } = "Måler";
     public static long SamplesReceived { get; private set; }
+    public static long MeasurementSamples { get; private set; }
 
     [Header("Arduino")]
     public string portName = "/dev/cu.usbmodem11301";
@@ -47,9 +49,11 @@ public class ArduinoReader : MonoBehaviour
                 {
                     currentEKGFloat = value;
                     currentEKG = Mathf.RoundToInt(value);
+                    SamplesReceived++;
+
                     if (IsMeasuring)
                     {
-                        SamplesReceived++;
+                        MeasurementSamples++;
                     }
                     LastStatus = "Forbundet: " + portName;
                 }
@@ -139,10 +143,12 @@ public class ArduinoReader : MonoBehaviour
     public static void StartMeasuring()
     {
         IsMeasuring = true;
+        MeasurementStatus = "Måling aktiv";
     }
 
     public static void StopMeasuring()
     {
         IsMeasuring = false;
+        MeasurementStatus = "Måling stoppet";
     }
 }
