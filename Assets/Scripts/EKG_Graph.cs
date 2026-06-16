@@ -38,6 +38,8 @@ public class EKGGraph : MonoBehaviour
     void Start()
     {
         smoothValue = ArduinoReader.currentEKGFloat;
+        SeedBaseline();
+        DrawGraph();
     }
 
     void Update()
@@ -60,6 +62,16 @@ public class EKGGraph : MonoBehaviour
         while (values.Count > maxPoints)
         {
             values.RemoveAt(0);
+        }
+    }
+
+    private void SeedBaseline()
+    {
+        values.Clear();
+
+        for (int i = 0; i < maxPoints; i++)
+        {
+            values.Add(smoothValue);
         }
     }
 
