@@ -12,3 +12,4 @@
 /Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.pdb
 /Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.genruntimeconfig.cache
 /Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/ref/EKG-PC-Program.dll
+/Users/beninal-uboody/Documents/GitHub/EKG-PC-Program/obj/Debug/net9.0/EKG-PC-Program.sourcelink.json

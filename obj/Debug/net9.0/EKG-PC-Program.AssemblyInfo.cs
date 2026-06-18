@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("EKG-PC-Program")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c4206211b339ec7415bce0010ae6a9bb9fe0ef3f")]
 [assembly: System.Reflection.AssemblyProductAttribute("EKG-PC-Program")]
 [assembly: System.Reflection.AssemblyTitleAttribute("EKG-PC-Program")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,34 +1,39 @@
 using System.Collections.Generic;
-using TMPro;
 using UnityEngine;
 
+// Tegner hele EKG-monitoren og styrer patient/resultat-knapperne.
 public class EKGDisplay : MonoBehaviour
 {
-    public TextMeshProUGUI ekgText;
-    public bool showText = false;
-
     private class PatientInfo
     {
         public string Id;
         public string Name;
+        public string Age;
+        public string Gender;
     }
 
     private readonly List<PatientInfo> patients = new List<PatientInfo>();
+
+    // Et live-grafpunkt består af tidspunkt og filtreret EKG-værdi.
     private struct GraphSample
     {
         public float time;
         public float value;
     }
 
-    private readonly List<GraphSample> graphValues = new List<GraphSample>();
-    private readonly List<float> activeMeasurementSamples = new List<float>();
-    private readonly List<int> activeBpmSamples = new List<int>();
-    private readonly List<float> resultSamples = new List<float>();
-    private readonly List<EKGResultDatabase.EKGResult> visibleResults = new List<EKGResultDatabase.EKGResult>();
+    private readonly List<GraphSample> graphValues = new List<GraphSample>(); // Punkter til livegrafen.
+    private readonly List<float> activeMeasurementSamples = new List<float>(); // Punkter der gemmes ved Stop måling.
+    private readonly List<int> activeBpmSamples = new List<int>(); // Puls-værdier under aktiv måling.
+    private readonly List<float> resultSamples = new List<float>(); // Punkter fra valgt gemt resultat.
+    private readonly List<EKGResultDatabase.EKGResult> visibleResults = new List<EKGResultDatabase.EKGResult>(); // Resultatliste for valgt patient.
 
     private string selectedPatient = "#0001";
     private string patientName = "Matti";
+    private string patientAge = "25";
+    private string patientGender = "Ukendt";
     private string newPatientName = "Matti";
+    private string newPatientAge = "25";
+    private string newPatientGender = "Ukendt";
     private string saveStatus = "Ikke gemt";
     private string resultSummary = "Ingen gemt måling endnu.";
     private bool showCreatePatient;
@@ -38,6 +43,8 @@ public class EKGDisplay : MonoBehaviour
     private int selectedResultId = -1;
     private int resultPage;
     private float selectedResultAverageBpm;
+    private float selectedResultDurationSeconds;
+    private float measurementStartTime;
     private EKGResultDatabase resultDatabase;
 
     private GUIStyle titleStyle;
@@ -65,56 +72,45 @@ public class EKGDisplay : MonoBehaviour
     private const float GraphWindowSeconds = 8f;
     private const float SecondsPerSmallSquare = 0.2f;
     private const float SecondsPerLargeSquare = 1f;
+    private const float FallbackResultSamplesPerSecond = 30f;
     private const int ResultsPerPage = 4;
 
     void Start()
     {
+        // Start med én standardpatient, så programmet kan måle med det samme.
         patients.Add(new PatientInfo
         {
             Id = selectedPatient,
-            Name = patientName
+            Name = patientName,
+            Age = patientAge,
+            Gender = patientGender
         });
+
+        // Database-komponenten gemmer og henter tidligere målinger.
         resultDatabase = GetComponent<EKGResultDatabase>();
         if (resultDatabase == null)
         {
             resultDatabase = gameObject.AddComponent<EKGResultDatabase>();
         }
 
-        if (ekgText != null)
-        {
-            ekgText.gameObject.SetActive(showText);
-
-            Canvas canvas = ekgText.GetComponentInParent<Canvas>();
-            if (canvas != null)
-            {
-                canvas.transform.localScale = Vector3.one;
-            }
-        }
-
+        measurementStartTime = Time.time;
         baseline = ArduinoReader.currentEKGFloat;
     }
 
     void Update()
     {
+        // Gem nyeste live-værdi som et grafpunkt, når Arduino har sendt data.
         CaptureGraphSample();
-
-        if (ekgText == null || !showText)
-        {
-            return;
-        }
-
-        ekgText.text =
-            "EKG: " + ArduinoReader.currentEKG +
-            "\nSamples: " + ArduinoReader.SamplesReceived +
-            "\nStatus: " + ArduinoReader.LastStatus;
     }
 
     void OnGUI()
     {
+        // OnGUI kaldes af Unity hver frame og tegner hele monitoren.
         BuildStyles();
 
         DrawBackground();
 
+        // Skaler UI'et, så det passer nogenlunde til forskellige skærmstørrelser.
         float scale = Mathf.Clamp(Mathf.Min(Screen.width / 1280f, Screen.height / 720f), 0.75f, 1.25f);
         float margin = 24f * scale;
         Rect app = new Rect(margin, margin, Screen.width - margin * 2f, Screen.height - margin * 2f);
@@ -126,6 +122,7 @@ public class EKGDisplay : MonoBehaviour
         GUI.Label(new Rect(header.x + 22f * scale, header.y, 320f * scale, header.height), "EKG MONITOR", monitorTitleStyle);
         GUI.Label(new Rect(header.xMax - 260f * scale, header.y, 230f * scale, header.height), "LIVE USB  |  EDUCATION", smallLabelStyle);
 
+        // Hovedlayout: graf til venstre, knapper i midten, status/resultat til højre.
         float leftPanelWidth = 230f * scale;
         float rightPanelWidth = 330f * scale;
         Rect graphPanel = new Rect(app.x + 22f * scale, app.y + 78f * scale, app.width - leftPanelWidth - rightPanelWidth - 66f * scale, app.height - 104f * scale);
@@ -136,6 +133,7 @@ public class EKGDisplay : MonoBehaviour
         GUI.Box(controlPanel, GUIContent.none, panelStyle);
         GUI.Box(statusPanel, GUIContent.none, panelStyle);
 
+        // Øverste puls-label skifter mellem live HR og gennemsnit for valgt resultat.
         Rect pulseRect = new Rect(graphPanel.x + 18f * scale, graphPanel.y + 12f * scale, graphPanel.width - 36f * scale, 44f * scale);
         string hrLabel = showResult && selectedResultId >= 0
             ? "AVG HR  " + Mathf.RoundToInt(selectedResultAverageBpm) + " BPM"
@@ -144,6 +142,7 @@ public class EKGDisplay : MonoBehaviour
         GUI.Label(pulseRect, hrLabel, titleStyle);
         GUI.Label(new Rect(pulseRect.xMax - 154f * scale, pulseRect.y + 4f * scale, 140f * scale, 28f * scale), badgeLabel, statusBadgeStyle);
 
+        // Selve grafområdet med tids-gitter.
         Rect graphFrame = new Rect(graphPanel.x + 18f * scale, graphPanel.y + 70f * scale, graphPanel.width - 36f * scale, graphPanel.height - 94f * scale);
         DrawGrid(graphFrame, scale);
         DrawGraph(graphFrame);
@@ -151,11 +150,12 @@ public class EKGDisplay : MonoBehaviour
 
         GUI.Label(new Rect(controlPanel.x + 16f * scale, controlPanel.y + 14f * scale, controlPanel.width - 32f * scale, 30f * scale), "Kontrol", titleStyle);
 
+        // Knapperne styrer måling, patienter og resultater.
         float buttonX = controlPanel.x + 22f * scale;
         float buttonY = controlPanel.y + 62f * scale;
         float buttonW = controlPanel.width - 44f * scale;
-        float buttonH = 38f * scale;
-        float gap = 8f * scale;
+        float buttonH = 32f * scale;
+        float gap = 6f * scale;
 
         if (GUI.Button(new Rect(buttonX, buttonY, buttonW, buttonH), "Start måling", ArduinoReader.IsMeasuring ? activeButtonStyle : buttonStyle))
         {
@@ -200,6 +200,7 @@ public class EKGDisplay : MonoBehaviour
 
     private void CaptureGraphSample()
     {
+        // Stop her hvis Arduino ikke har sendt en ny sample siden sidste frame.
         if (ArduinoReader.SamplesReceived == lastSampleCount)
         {
             return;
@@ -207,9 +208,11 @@ public class EKGDisplay : MonoBehaviour
 
         lastSampleCount = ArduinoReader.SamplesReceived;
 
+        // Baseline filtrerer langsomme forskydninger væk fra EKG-signalet.
         float raw = ArduinoReader.currentEKGFloat;
         baseline = graphValues.Count == 0 ? raw : Mathf.Lerp(baseline, raw, 0.012f);
 
+        // FastChange fremhæver hurtige udsving, så R-takker bliver tydeligere i grafen.
         float highPassed = raw - baseline;
         float fastChange = highPassed - previousHighPassed;
         previousHighPassed = highPassed;
@@ -219,12 +222,14 @@ public class EKGDisplay : MonoBehaviour
             ? shapedValue
             : Mathf.Lerp(filteredValue, shapedValue, 0.35f);
 
+        // Gem punktet til livegrafen.
         graphValues.Add(new GraphSample
         {
             time = Time.time,
             value = filteredValue
         });
 
+        // Under aktiv måling gemmes samme punkter til databasen.
         if (ArduinoReader.IsMeasuring)
         {
             activeMeasurementSamples.Add(filteredValue);
@@ -235,6 +240,7 @@ public class EKGDisplay : MonoBehaviour
             }
         }
 
+        // Livegrafen viser kun de seneste GraphWindowSeconds sekunder.
         float minTime = Time.time - GraphWindowSeconds;
         while (graphValues.Count > 0 && graphValues[0].time < minTime)
         {
@@ -242,21 +248,247 @@ public class EKGDisplay : MonoBehaviour
         }
     }
 
+    private void StartNewMeasurement()
+    {
+        // Nulstil den aktive måling, så næste gemte resultat kun indeholder nye data.
+        activeMeasurementSamples.Clear();
+        activeBpmSamples.Clear();
+        resultSamples.Clear();
+        visibleResults.Clear();
+        selectedResultId = -1;
+        resultPage = 0;
+        selectedResultAverageBpm = 0f;
+        selectedResultDurationSeconds = 0f;
+        measurementStartTime = Time.time;
+        resultSummary = "Måling i gang.";
+        showResult = false;
+    }
+
+    private void SaveCurrentMeasurement()
+    {
+        // Gem kun målingen, hvis der er nok grafpunkter til et reelt resultat.
+        if (activeMeasurementSamples.Count < 2)
+        {
+            saveStatus = "Ingen måling gemt";
+            resultSummary = "Der er ikke nok data til at gemme en måling.";
+            return;
+        }
+
+        float averageBpm = AverageBpm();
+        float durationSeconds = Mathf.Max(Time.time - measurementStartTime, 0.1f);
+        resultDatabase.SaveMeasurement(selectedPatient, patientName, patientAge, patientGender, averageBpm, durationSeconds, new List<float>(activeMeasurementSamples));
+        saveStatus = "Måling gemt";
+        resultSummary =
+            "Seneste måling gemt\n" +
+            "Patient: " + patientName + "\n" +
+            "ID: " + selectedPatient + "\n" +
+            "Alder: " + patientAge + "\n" +
+            "Køn: " + patientGender + "\n" +
+            "Gennemsnitspuls: " + Mathf.RoundToInt(averageBpm) + " BPM\n" +
+            "Varighed: " + durationSeconds.ToString("0.0") + " s\n" +
+            "Samples: " + activeMeasurementSamples.Count;
+    }
+
+    private void LoadLatestResult()
+    {
+        // Hent alle resultater for valgt patient og vælg automatisk det nyeste.
+        visibleResults.Clear();
+        resultSamples.Clear();
+        selectedResultId = -1;
+        resultPage = 0;
+        selectedResultAverageBpm = 0f;
+        selectedResultDurationSeconds = 0f;
+
+        visibleResults.AddRange(resultDatabase.GetMeasurements(selectedPatient));
+
+        if (visibleResults.Count == 0)
+        {
+            resultSummary = "Der er ikke gemt en måling endnu.";
+            saveStatus = "Intet resultat";
+            return;
+        }
+
+        resultPage = Mathf.Max(0, (visibleResults.Count - 1) / ResultsPerPage);
+        SelectResult(visibleResults[visibleResults.Count - 1]);
+    }
+
+    private void SelectResult(EKGResultDatabase.EKGResult result)
+    {
+        // Valgt resultat bliver vist som rød graf og som tekst i statuspanelet.
+        if (result == null)
+        {
+            return;
+        }
+
+        resultSamples.Clear();
+        resultSamples.AddRange(result.Samples);
+        selectedResultId = result.Id;
+        selectedResultAverageBpm = result.AverageBpm;
+        selectedResultDurationSeconds = result.DurationSeconds;
+        selectedPatient = result.PatientId;
+        patientName = result.PatientName;
+        patientAge = string.IsNullOrEmpty(result.PatientAge) ? "Ukendt" : result.PatientAge;
+        patientGender = string.IsNullOrEmpty(result.PatientGender) ? "Ukendt" : result.PatientGender;
+        RememberPatient(selectedPatient, patientName, patientAge, patientGender);
+        saveStatus = "Resultat vist";
+        resultSummary =
+            "#" + ResultNumberFor(result) + "\n" +
+            "Tid: " + result.CreatedAt + "\n" +
+            "Patient: " + result.PatientName + "\n" +
+            "ID: " + result.PatientId + "\n" +
+            "Alder: " + patientAge + "\n" +
+            "Køn: " + patientGender + "\n" +
+            "Gennemsnitspuls: " + Mathf.RoundToInt(result.AverageBpm) + " BPM\n" +
+            "Varighed: " + ResultDurationSeconds().ToString("0.0") + " s\n" +
+            "Viser: sidste " + Mathf.Min(GraphWindowSeconds, ResultDurationSeconds()).ToString("0.0") + " s\n" +
+            "Samples: " + result.Samples.Count;
+    }
+
+    private void DeleteSelectedResult()
+    {
+        // Sletter kun det resultat, der er markeret i resultatlisten.
+        if (selectedResultId < 0)
+        {
+            resultSummary = "Vælg et resultat først.";
+            return;
+        }
+
+        resultDatabase.DeleteMeasurement(selectedResultId);
+        saveStatus = "Resultat slettet";
+        LoadLatestResult();
+    }
+
+    private void DeleteSelectedPatient()
+    {
+        // Slet patienten og alle patientens gemte målinger.
+        if (patients.Count <= 1)
+        {
+            saveStatus = "Kan ikke slette sidste patient";
+            return;
+        }
+
+        string deletedPatient = patientName;
+        resultDatabase.DeletePatientMeasurements(selectedPatient);
+
+        for (int i = patients.Count - 1; i >= 0; i--)
+        {
+            if (patients[i].Id == selectedPatient)
+            {
+                patients.RemoveAt(i);
+            }
+        }
+
+        selectedPatient = patients[0].Id;
+        patientName = patients[0].Name;
+        patientAge = patients[0].Age;
+        patientGender = patients[0].Gender;
+        resultSamples.Clear();
+        visibleResults.Clear();
+        selectedResultId = -1;
+        resultPage = 0;
+        selectedResultAverageBpm = 0f;
+        selectedResultDurationSeconds = 0f;
+        saveStatus = "Patient slettet";
+        resultSummary = deletedPatient + " og patientens resultater er slettet.";
+    }
+
+    private string ResultStatusText()
+    {
+        // Teksten der vises i højre panel, når man ser gemte resultater.
+        if (visibleResults.Count == 0 || selectedResultId < 0)
+        {
+            return "Ingen gemte resultater for\n" + patientName + ".";
+        }
+
+        return resultSummary + "\n" +
+            "Antal resultater: " + visibleResults.Count + "\n" +
+            "Status: Klar til gennemgang";
+    }
+
+    private int ResultNumberFor(EKGResultDatabase.EKGResult result)
+    {
+        // Database-ID kan være #14, men UI skal vise #1, #2, #3 pr. patient.
+        for (int i = 0; i < visibleResults.Count; i++)
+        {
+            if (visibleResults[i].Id == result.Id)
+            {
+                return i + 1;
+            }
+        }
+
+        return 1;
+    }
+
+    private void RememberPatient(string id, string name, string age, string gender)
+    {
+        // Opdater eksisterende patient i listen, hvis den allerede findes.
+        for (int i = 0; i < patients.Count; i++)
+        {
+            if (patients[i].Id == id)
+            {
+                patients[i].Name = name;
+                patients[i].Age = age;
+                patients[i].Gender = gender;
+                return;
+            }
+        }
+
+        patients.Add(new PatientInfo
+        {
+            Id = id,
+            Name = name,
+            Age = age,
+            Gender = gender
+        });
+    }
+
+    private float AverageBpm()
+    {
+        // Hvis der ikke er registreret pulssamples, bruges seneste live-puls.
+        if (activeBpmSamples.Count == 0)
+        {
+            return EKGAnalyzer.LatestBpm;
+        }
+
+        float sum = 0f;
+        for (int i = 0; i < activeBpmSamples.Count; i++)
+        {
+            sum += activeBpmSamples[i];
+        }
+
+        return sum / activeBpmSamples.Count;
+    }
+
+    private float ResultDurationSeconds()
+    {
+        // Nye resultater har rigtig varighed gemt i databasen.
+        if (selectedResultDurationSeconds > 0f)
+        {
+            return selectedResultDurationSeconds;
+        }
+
+        // Gamle database-resultater har ikke varighed gemt, så de får et forsigtigt estimat.
+        return Mathf.Max(GraphWindowSeconds, resultSamples.Count / FallbackResultSamplesPerSecond);
+    }
+
+
+
     private void DrawStatusPanel(Rect statusRect, float scale)
     {
+        // Højre panel viser enten live-status eller oversigt for valgt resultat.
         GUI.Label(new Rect(statusRect.x + 16f * scale, statusRect.y + 14f * scale, statusRect.width - 32f * scale, 30f * scale), showResult ? "Resultat oversigt" : "System status", titleStyle);
 
         string status = showResult
             ? ResultStatusText()
             : "Patient: " + patientName + "\n" +
                 "ID: " + selectedPatient + "\n" +
+                "Alder: " + patientAge + "\n" +
+                "Køn: " + patientGender + "\n" +
                 "Måling: " + ArduinoReader.MeasurementStatus + "\n" +
-                "Rå signalværdi: " + ArduinoReader.currentEKG + "\n" +
                 "Live puls: " + EKGAnalyzer.LatestBpm + " BPM\n" +
-                "Signalstatus: " + DataQuality() + "\n" +
                 "Forbindelse: " + (ArduinoReader.IsConnected ? "Tilsluttet" : "Ikke tilsluttet") + "\n" +
                 "Gemmestatus: " + saveStatus + "\n" +
-                "Samples i måling: " + ArduinoReader.MeasurementSamples;
+                "Samples i måling: " + activeMeasurementSamples.Count;
 
         GUI.Label(
             new Rect(statusRect.x + 22f * scale, statusRect.y + 58f * scale, statusRect.width - 44f * scale, statusRect.height - 74f * scale),
@@ -267,30 +499,43 @@ public class EKGDisplay : MonoBehaviour
 
     private void DrawDetailPanel(Rect rect, float scale)
     {
+        // Midterpanelets nederste del skifter mellem opret patient, vælg patient og resultater.
         GUI.Box(rect, GUIContent.none, darkPanelStyle);
 
         if (showCreatePatient)
         {
+            // Formular til ny patient.
             GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 12f * scale, rect.width - 20f * scale, 24f * scale), "Ny patient", smallLabelStyle);
             GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 46f * scale, rect.width - 20f * scale, 20f * scale), "Navn", smallLabelStyle);
             newPatientName = GUI.TextField(new Rect(rect.x + 10f * scale, rect.y + 70f * scale, rect.width - 20f * scale, 28f * scale), newPatientName, textFieldStyle);
+            GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 104f * scale, rect.width - 20f * scale, 20f * scale), "Alder", smallLabelStyle);
+            newPatientAge = GUI.TextField(new Rect(rect.x + 10f * scale, rect.y + 128f * scale, rect.width - 20f * scale, 28f * scale), newPatientAge, textFieldStyle);
+            GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 162f * scale, rect.width - 20f * scale, 20f * scale), "Køn", smallLabelStyle);
+            newPatientGender = GUI.TextField(new Rect(rect.x + 10f * scale, rect.y + 186f * scale, rect.width - 20f * scale, 28f * scale), newPatientGender, textFieldStyle);
 
-            if (GUI.Button(new Rect(rect.x + 10f * scale, rect.y + 120f * scale, rect.width - 20f * scale, 32f * scale), "Gem", buttonStyle))
+            if (GUI.Button(new Rect(rect.x + 10f * scale, rect.y + 228f * scale, rect.width - 20f * scale, 32f * scale), "Gem", buttonStyle))
             {
                 patientCounter++;
                 selectedPatient = "#" + patientCounter.ToString("0000");
                 patientName = string.IsNullOrWhiteSpace(newPatientName) ? "Patient " + selectedPatient : newPatientName.Trim();
+                patientAge = string.IsNullOrWhiteSpace(newPatientAge) ? "Ukendt" : newPatientAge.Trim();
+                patientGender = string.IsNullOrWhiteSpace(newPatientGender) ? "Ukendt" : newPatientGender.Trim();
                 patients.Add(new PatientInfo
                 {
                     Id = selectedPatient,
-                    Name = patientName
+                    Name = patientName,
+                    Age = patientAge,
+                    Gender = patientGender
                 });
                 newPatientName = "";
+                newPatientAge = "";
+                newPatientGender = "";
                 saveStatus = "Patient oprettet";
             }
         }
         else if (showPatientPicker)
         {
+            // Liste over patienter i hukommelsen.
             GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 12f * scale, rect.width - 20f * scale, 24f * scale), "Patienter", smallLabelStyle);
 
             int maxPatients = Mathf.Min(patients.Count, 3);
@@ -301,6 +546,8 @@ public class EKGDisplay : MonoBehaviour
                 {
                     selectedPatient = patients[i].Id;
                     patientName = patients[i].Name;
+                    patientAge = patients[i].Age;
+                    patientGender = patients[i].Gender;
                     saveStatus = "Patient valgt";
                 }
             }
@@ -312,6 +559,7 @@ public class EKGDisplay : MonoBehaviour
         }
         else if (showResult)
         {
+            // Liste over gemte resultater for valgt patient.
             GUI.Label(new Rect(rect.x + 10f * scale, rect.y + 12f * scale, rect.width - 20f * scale, 24f * scale), "Resultat", smallLabelStyle);
 
             if (visibleResults.Count == 0)
@@ -374,6 +622,7 @@ public class EKGDisplay : MonoBehaviour
 
     private void DrawGraph(Rect rect)
     {
+        // I resultatvisning tegnes den gemte kurve; ellers tegnes live-kurven.
         if (showResult && resultSamples.Count > 1)
         {
             DrawResultGraph(rect);
@@ -415,208 +664,44 @@ public class EKGDisplay : MonoBehaviour
 
     private void DrawResultGraph(Rect rect)
     {
-        float center = AverageValues(resultSamples);
-        float range = Mathf.Max(MaxAbsDistanceValues(resultSamples, center), 22f);
-        Vector2 previous = Vector2.zero;
+        // Resultatgrafen viser ikke hele målingen på én gang; den viser et korrekt tidsvindue.
+        float duration = ResultDurationSeconds();
 
-        for (int i = 0; i < resultSamples.Count; i++)
+        // Beregn hvor mange samples der svarer til 8 sekunder.
+        int samplesToShow = Mathf.Clamp(Mathf.RoundToInt(resultSamples.Count * (GraphWindowSeconds / duration)), 2, resultSamples.Count);
+        int startIndex = Mathf.Max(0, resultSamples.Count - samplesToShow);
+        int endIndex = resultSamples.Count - 1;
+        float secondsPerSample = duration / Mathf.Max(resultSamples.Count - 1, 1);
+        float visibleSeconds = (endIndex - startIndex) * secondsPerSample;
+
+        // Brug kun det viste udsnit til lodret skalering.
+        float center = AverageValues(resultSamples, startIndex, endIndex);
+        float range = Mathf.Max(MaxAbsDistanceValues(resultSamples, center, startIndex, endIndex), 22f);
+        Vector2 previous = Vector2.zero;
+        bool hasPrevious = false;
+
+        for (int i = startIndex; i <= endIndex; i++)
         {
-            float x = Mathf.Lerp(rect.x + 8f, rect.xMax - 8f, i / (float)(resultSamples.Count - 1));
+            // X-positionen beregnes ud fra tid, ikke bare sample-index.
+            float secondsIntoWindow = (i - startIndex) * secondsPerSample;
+            float x = Mathf.Lerp(rect.x + 8f, rect.xMax - 8f, secondsIntoWindow / Mathf.Max(visibleSeconds, GraphWindowSeconds));
             float normalized = Mathf.Clamp((resultSamples[i] - center) / range, -1f, 1f);
             float y = rect.center.y - normalized * rect.height * 0.42f;
             Vector2 current = new Vector2(x, y);
 
-            if (i > 0)
+            if (hasPrevious)
             {
                 DrawLine(previous, current, new Color(1f, 0.28f, 0.28f), 2.2f);
             }
 
             previous = current;
+            hasPrevious = true;
         }
-    }
-
-    private void StartNewMeasurement()
-    {
-        activeMeasurementSamples.Clear();
-        activeBpmSamples.Clear();
-        resultSamples.Clear();
-        visibleResults.Clear();
-        selectedResultId = -1;
-        resultPage = 0;
-        selectedResultAverageBpm = 0f;
-        resultSummary = "Måling i gang.";
-        showResult = false;
-    }
-
-    private void SaveCurrentMeasurement()
-    {
-        if (activeMeasurementSamples.Count < 2)
-        {
-            saveStatus = "Ingen måling gemt";
-            resultSummary = "Der er ikke nok data til at gemme en måling.";
-            return;
-        }
-
-        float averageBpm = AverageBpm();
-        resultDatabase.SaveMeasurement(selectedPatient, patientName, averageBpm, new List<float>(activeMeasurementSamples));
-        saveStatus = "Måling gemt";
-        resultSummary =
-            "Seneste måling gemt\n" +
-            "Patient: " + patientName + "\n" +
-            "ID: " + selectedPatient + "\n" +
-            "Gennemsnitspuls: " + Mathf.RoundToInt(averageBpm) + " BPM\n" +
-            "Samples: " + activeMeasurementSamples.Count;
-    }
-
-    private void LoadLatestResult()
-    {
-        visibleResults.Clear();
-        resultSamples.Clear();
-        selectedResultId = -1;
-        resultPage = 0;
-        selectedResultAverageBpm = 0f;
-
-        visibleResults.AddRange(resultDatabase.GetMeasurements(selectedPatient));
-
-        if (visibleResults.Count == 0)
-        {
-            resultSummary = "Der er ikke gemt en måling endnu.";
-            saveStatus = "Intet resultat";
-            return;
-        }
-
-        resultPage = Mathf.Max(0, (visibleResults.Count - 1) / ResultsPerPage);
-        SelectResult(visibleResults[visibleResults.Count - 1]);
-    }
-
-    private void SelectResult(EKGResultDatabase.EKGResult result)
-    {
-        if (result == null)
-        {
-            return;
-        }
-
-        resultSamples.Clear();
-        resultSamples.AddRange(result.Samples);
-        selectedResultId = result.Id;
-        selectedResultAverageBpm = result.AverageBpm;
-        selectedPatient = result.PatientId;
-        patientName = result.PatientName;
-        RememberPatient(selectedPatient, patientName);
-        saveStatus = "Resultat vist";
-        resultSummary =
-            "#" + ResultNumberFor(result) + "\n" +
-            "Tid: " + result.CreatedAt + "\n" +
-            "Patient: " + result.PatientName + "\n" +
-            "ID: " + result.PatientId + "\n" +
-            "Gennemsnitspuls: " + Mathf.RoundToInt(result.AverageBpm) + " BPM\n" +
-            "Samples: " + result.Samples.Count;
-    }
-
-    private void DeleteSelectedResult()
-    {
-        if (selectedResultId < 0)
-        {
-            resultSummary = "Vælg et resultat først.";
-            return;
-        }
-
-        resultDatabase.DeleteMeasurement(selectedResultId);
-        saveStatus = "Resultat slettet";
-        LoadLatestResult();
-    }
-
-    private void DeleteSelectedPatient()
-    {
-        if (patients.Count <= 1)
-        {
-            saveStatus = "Kan ikke slette sidste patient";
-            return;
-        }
-
-        string deletedPatient = patientName;
-        resultDatabase.DeletePatientMeasurements(selectedPatient);
-
-        for (int i = patients.Count - 1; i >= 0; i--)
-        {
-            if (patients[i].Id == selectedPatient)
-            {
-                patients.RemoveAt(i);
-            }
-        }
-
-        selectedPatient = patients[0].Id;
-        patientName = patients[0].Name;
-        resultSamples.Clear();
-        visibleResults.Clear();
-        selectedResultId = -1;
-        resultPage = 0;
-        selectedResultAverageBpm = 0f;
-        saveStatus = "Patient slettet";
-        resultSummary = deletedPatient + " og patientens resultater er slettet.";
-    }
-
-    private string ResultStatusText()
-    {
-        if (visibleResults.Count == 0 || selectedResultId < 0)
-        {
-            return "Ingen gemte resultater for\n" + patientName + ".";
-        }
-
-        return resultSummary + "\n" +
-            "Antal resultater: " + visibleResults.Count + "\n" +
-            "Status: Klar til gennemgang";
-    }
-
-    private int ResultNumberFor(EKGResultDatabase.EKGResult result)
-    {
-        for (int i = 0; i < visibleResults.Count; i++)
-        {
-            if (visibleResults[i].Id == result.Id)
-            {
-                return i + 1;
-            }
-        }
-
-        return 1;
-    }
-
-    private void RememberPatient(string id, string name)
-    {
-        for (int i = 0; i < patients.Count; i++)
-        {
-            if (patients[i].Id == id)
-            {
-                patients[i].Name = name;
-                return;
-            }
-        }
-
-        patients.Add(new PatientInfo
-        {
-            Id = id,
-            Name = name
-        });
-    }
-
-    private float AverageBpm()
-    {
-        if (activeBpmSamples.Count == 0)
-        {
-            return EKGAnalyzer.LatestBpm;
-        }
-
-        float sum = 0f;
-        for (int i = 0; i < activeBpmSamples.Count; i++)
-        {
-            sum += activeBpmSamples[i];
-        }
-
-        return sum / activeBpmSamples.Count;
     }
 
     private void BuildStyles()
     {
+        // Styles bygges kun én gang for at undgå unødigt arbejde hver frame.
         if (panelStyle != null)
         {
             return;
@@ -680,21 +765,6 @@ public class EKGDisplay : MonoBehaviour
         textFieldStyle.normal.textColor = Color.white;
     }
 
-    private string DataQuality()
-    {
-        if (!ArduinoReader.IsConnected)
-        {
-            return "Ingen";
-        }
-
-        if (ArduinoReader.SamplesReceived < 30)
-        {
-            return "Starter";
-        }
-
-        return "God";
-    }
-
     private float Average(List<GraphSample> source)
     {
         float sum = 0f;
@@ -723,23 +793,23 @@ public class EKGDisplay : MonoBehaviour
         return maxDistance;
     }
 
-    private float AverageValues(List<float> source)
+    private float AverageValues(List<float> source, int startIndex, int endIndex)
     {
         float sum = 0f;
 
-        for (int i = 0; i < source.Count; i++)
+        for (int i = startIndex; i <= endIndex; i++)
         {
             sum += source[i];
         }
 
-        return sum / source.Count;
+        return sum / Mathf.Max(endIndex - startIndex + 1, 1);
     }
 
-    private float MaxAbsDistanceValues(List<float> source, float center)
+    private float MaxAbsDistanceValues(List<float> source, float center, int startIndex, int endIndex)
     {
         float maxDistance = 0f;
 
-        for (int i = 0; i < source.Count; i++)
+        for (int i = startIndex; i <= endIndex; i++)
         {
             float distance = Mathf.Abs(source[i] - center);
             if (distance > maxDistance)
@@ -749,29 +819,6 @@ public class EKGDisplay : MonoBehaviour
         }
 
         return maxDistance;
-    }
-
-    private void DrawDashedFrame(Rect rect, Color color)
-    {
-        Color oldColor = GUI.color;
-        GUI.color = color;
-
-        float dash = 10f;
-        float gap = 7f;
-
-        for (float x = rect.x; x < rect.xMax; x += dash + gap)
-        {
-            GUI.DrawTexture(new Rect(x, rect.y, Mathf.Min(dash, rect.xMax - x), 1f), Texture2D.whiteTexture);
-            GUI.DrawTexture(new Rect(x, rect.yMax, Mathf.Min(dash, rect.xMax - x), 1f), Texture2D.whiteTexture);
-        }
-
-        for (float y = rect.y; y < rect.yMax; y += dash + gap)
-        {
-            GUI.DrawTexture(new Rect(rect.x, y, 1f, Mathf.Min(dash, rect.yMax - y)), Texture2D.whiteTexture);
-            GUI.DrawTexture(new Rect(rect.xMax, y, 1f, Mathf.Min(dash, rect.yMax - y)), Texture2D.whiteTexture);
-        }
-
-        GUI.color = oldColor;
     }
 
     private void DrawBackground()
