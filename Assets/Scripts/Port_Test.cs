@@ -1,4 +1,4 @@
-//Hovedforfatter(e) Amarinda
+//Hovedforfatter(e) Amarinder
 using UnityEngine;
 
 public class PortTest : MonoBehaviour
