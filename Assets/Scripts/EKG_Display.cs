@@ -1,5 +1,5 @@
 //Hovedforfatter(e) Matti og Benin
-//Sekundærforfatter(e) Amarinda
+//Sekundærforfatter(e) Amarinder
 using System.Collections.Generic;
 using UnityEngine;
 
