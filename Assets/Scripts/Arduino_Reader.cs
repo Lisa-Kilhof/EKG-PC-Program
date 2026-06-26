@@ -1,4 +1,4 @@
-//Hovedforfatter(e) Lisa, Amarinda, Matti og Benin
+//Hovedforfatter(e) Lisa, Amarinder, Matti og Benin
 //Sekundærforfatter(e) 
 using System;
 using System.Globalization;
