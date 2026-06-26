@@ -1,5 +1,5 @@
 //Hovedforfatter(e) Matti og Benin
-//Sekundærforfatter(e) Amarinda
+//Sekundærforfatter(e) Amarinder
 using UnityEngine;
 
 // Finder R-takker i live-signalet og beregner puls i BPM.
