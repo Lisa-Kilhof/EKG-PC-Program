@@ -1,3 +1,5 @@
+//Hovedforfatter(e) Lisa, Amarinda, Matti og Benin
+//Sekundærforfatter(e) 
 using System;
 using System.Globalization;
 using System.IO.Ports;
